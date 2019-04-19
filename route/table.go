@@ -18,7 +18,6 @@ import (
 
 var errInvalidPrefix = errors.New("route: prefix must not be empty")
 var errInvalidTarget = errors.New("route: target must not be empty")
-var errNoMatch = errors.New("route: no target match")
 
 // table stores the active routing table. Must never be nil.
 var table atomic.Value
@@ -115,6 +114,7 @@ func NewTable(b *bytes.Buffer) (t Table, err error) {
 	}
 
 	t = make(Table)
+	unprocessedWeights := make([]*RouteDef, 0)
 	for _, d := range defs {
 		switch d.Cmd {
 		case RouteAddCmd:
@@ -122,7 +122,11 @@ func NewTable(b *bytes.Buffer) (t Table, err error) {
 		case RouteDelCmd:
 			err = t.delRoute(d)
 		case RouteWeightCmd:
-			err = t.weighRoute(d)
+			weightErr := t.weighRoute(d)
+			if weightErr != nil {
+				unprocessedWeights = append(unprocessedWeights, d)
+				continue
+			}
 		default:
 			err = fmt.Errorf("route: invalid command: %s", d.Cmd)
 		}
@@ -130,6 +134,30 @@ func NewTable(b *bytes.Buffer) (t Table, err error) {
 			return nil, err
 		}
 	}
+
+	// Allow weights to add a new path and/or host, where there is a match on the
+	// service name and the tags. This helps with things like Canary testing, so we
+	// can a unique url to allow access to a version that is not yet live.
+	for _, d := range defs {
+		switch d.Cmd {
+		case RouteAddCmd:
+			for _, w := range unprocessedWeights {
+				if d.Service == w.Service && contains(d.Tags, w.Tags) {
+					// found a match
+					newRouteDef := &RouteDef{
+						Cmd:     RouteAddCmd,
+						Service: d.Service,
+						Src:     w.Src,
+						Dst:     d.Dst,
+						Weight:  w.Weight,
+						Tags:    w.Tags,
+					}
+					t.addRoute(newRouteDef)
+				}
+			}
+		}
+	}
+
 	return t, nil
 }
 
@@ -210,11 +238,11 @@ func (t Table) weighRoute(d *RouteDef) error {
 	}
 
 	if t[host] == nil || t[host].find(path) == nil {
-		return errNoMatch
+		return fmt.Errorf("route: no target match for host %s and path %s", host, path)
 	}
 
 	if n := t[host].find(path).setWeight(d.Service, d.Weight, d.Tags); n == 0 {
-		return errNoMatch
+		return fmt.Errorf("route: no target match for host %s and path %s service '%s' with weight %g and tags %s", host, path, d.Service, d.Weight, d.Tags)
 	}
 	return nil
 }
