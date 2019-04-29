@@ -151,6 +151,7 @@ func NewTable(b *bytes.Buffer) (t Table, err error) {
 						Dst:     d.Dst,
 						Weight:  w.Weight,
 						Tags:    w.Tags,
+						Opts:    d.Opts,
 					}
 					t.addRoute(newRouteDef)
 				}
