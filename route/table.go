@@ -108,8 +108,8 @@ func hostpath(prefix string) (host string, path string) {
 	return p[0], "/" + p[1]
 }
 
-func NewTable(s string) (t Table, err error) {
-	defs, err := Parse(s)
+func NewTable(b *bytes.Buffer) (t Table, err error) {
+	defs, err := Parse(b)
 	if err != nil {
 		return nil, err
 	}
@@ -123,6 +123,27 @@ func NewTable(s string) (t Table, err error) {
 			err = t.delRoute(d)
 		case RouteWeightCmd:
 			err = t.weighRoute(d)
+		default:
+			err = fmt.Errorf("route: invalid command: %s", d.Cmd)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	return t, nil
+}
+
+func NewTableCustom(defs *[]RouteDef) (t Table, err error) {
+
+	t = make(Table)
+	for _, d := range *defs {
+		switch d.Cmd {
+		case RouteAddCmd:
+			err = t.addRoute(&d)
+		case RouteDelCmd:
+			err = t.delRoute(&d)
+		case RouteWeightCmd:
+			err = t.weighRoute(&d)
 		default:
 			err = fmt.Errorf("route: invalid command: %s", d.Cmd)
 		}
@@ -469,7 +490,7 @@ func (t Table) String() string {
 
 // Dump returns the routing table as a detailed
 func (t Table) Dump() string {
-	w := new(bytes.Buffer)
+	var w *bytes.Buffer
 
 	hosts := []string{}
 	for k := range t {

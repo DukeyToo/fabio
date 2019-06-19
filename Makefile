@@ -21,8 +21,12 @@ GOVERSION = $(shell go version | awk '{print $$3;}')
 GORELEASER = $(shell which goreleaser)
 
 # pin versions for CI builds
-CI_CONSUL_VERSION=1.3.0
-CI_VAULT_VERSION=0.11.4
+CI_CONSUL_VERSION=1.4.2
+CI_VAULT_VERSION=1.0.3
+
+# force go modules
+GO111MODULE = on
+export GO111MODULE
 
 # all is the default target
 all: test
@@ -40,11 +44,11 @@ help:
 
 # build compiles fabio and the test dependencies
 build: gofmt
-	go build
+	go build -mod=vendor
 
 # test runs the tests
 test: build
-	go test -v -test.timeout 15s `go list ./... | grep -v '/vendor/'`
+	go test -mod=vendor -v -test.timeout 15s ./...
 
 # gofmt runs gofmt on the code
 gofmt:
@@ -56,7 +60,7 @@ linux:
 
 # install runs go install
 install:
-	go install $(GOFLAGS)
+	go install -mod=vendor $(GOFLAGS)
 
 # pkg builds a fabio.tar.gz package with only fabio in it
 pkg: build test
@@ -119,7 +123,7 @@ codeship:
 
 # clean removes intermediate files
 clean:
-	go clean
+	go clean -mod=vendor
 	rm -rf pkg dist fabio
 	find . -name '*.test' -delete
 

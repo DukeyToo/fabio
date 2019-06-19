@@ -1,17 +1,18 @@
-FROM golang:1.11.1-alpine AS build
+FROM golang:1.11.5-alpine AS build
 
-ARG consul_version=1.3.0
+ARG consul_version=1.4.2
 ADD https://releases.hashicorp.com/consul/${consul_version}/consul_${consul_version}_linux_amd64.zip /usr/local/bin
 RUN cd /usr/local/bin && unzip consul_${consul_version}_linux_amd64.zip
 
-ARG vault_version=0.11.4
+ARG vault_version=1.0.3
 ADD https://releases.hashicorp.com/vault/${vault_version}/vault_${vault_version}_linux_amd64.zip /usr/local/bin
 RUN cd /usr/local/bin && unzip vault_${vault_version}_linux_amd64.zip
 
 WORKDIR /go/src/github.com/fabiolb/fabio
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test  -ldflags "-s -w" ./...
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w"
+ENV GO111MODULE=on
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -mod=vendor -ldflags "-s -w" ./...
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -ldflags "-s -w"
 
 FROM alpine:3.8
 RUN apk update && apk add ca-certificates && rm -rf /var/cache/apk/*

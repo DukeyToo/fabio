@@ -22,14 +22,15 @@ type Config struct {
 }
 
 type CertSource struct {
-	Name         string
-	Type         string
-	CertPath     string
-	KeyPath      string
-	ClientCAPath string
-	CAUpgradeCN  string
-	Refresh      time.Duration
-	Header       http.Header
+	Name            string
+	Type            string
+	CertPath        string
+	KeyPath         string
+	ClientCAPath    string
+	CAUpgradeCN     string
+	Refresh         time.Duration
+	Header          http.Header
+	VaultFetchToken string
 }
 
 type Listen struct {
@@ -118,6 +119,7 @@ type Registry struct {
 	Static  Static
 	File    File
 	Consul  Consul
+	Custom  Custom
 	Timeout time.Duration
 	Retry   time.Duration
 }
@@ -151,6 +153,18 @@ type Consul struct {
 	CheckDeregisterCriticalServiceAfter string
 	ChecksRequired                      string
 	ServiceMonitors                     int
+	TLS                                 ConsulTlS
+}
+
+type Custom struct {
+	Host               string
+	Path               string
+	QueryParams        string
+	Scheme             string
+	CheckTLSSkipVerify bool
+	PollingInterval    time.Duration
+	NoRouteHTML        string
+	Timeout            time.Duration
 }
 
 type Tracing struct {
@@ -174,4 +188,12 @@ type BasicAuth struct {
 	File    string
 	Refresh time.Duration
 	ModTime time.Time // the htpasswd file last modification time
+}
+
+type ConsulTlS struct {
+	KeyFile            string
+	CertFile           string
+	CAFile             string
+	CAPath             string
+	InsecureSkipVerify bool
 }

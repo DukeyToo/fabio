@@ -29,10 +29,12 @@ import (
 	"github.com/fabiolb/fabio/proxy/tcp"
 	"github.com/fabiolb/fabio/registry"
 	"github.com/fabiolb/fabio/registry/consul"
+	"github.com/fabiolb/fabio/registry/custom"
 	"github.com/fabiolb/fabio/registry/file"
 	"github.com/fabiolb/fabio/registry/static"
 	"github.com/fabiolb/fabio/route"
 	"github.com/fabiolb/fabio/trace"
+
 	grpc_proxy "github.com/mwitkow/grpc-proxy/proxy"
 	"github.com/pkg/profile"
 	dmp "github.com/sergi/go-diff/diffmatchpatch"
@@ -46,7 +48,7 @@ import (
 //
 // It is also set by the linker when fabio
 // is built via the Makefile or the build/docker.sh
-// script to ensure the correct version nubmer
+// script to ensure the correct version number
 var version = "1.5.11"
 
 var shuttingDown int32
@@ -94,6 +96,8 @@ func main() {
 			mode = profile.MutexProfile
 		case "block":
 			mode = profile.BlockProfile
+		case "trace":
+			mode = profile.TraceProfile
 		default:
 			log.Fatalf("[FATAL] Invalid profile mode %q", cfg.ProfileMode)
 		}
@@ -120,7 +124,8 @@ func main() {
 	initMetrics(cfg)
 	initRuntime(cfg)
 	initBackend(cfg)
-	//Init OpenTracing if Enabled in the Properties File Tracing.TracingEnabled
+
+	// init OpenTracing, if enabled
 	trace.InitializeTracer(&cfg.Tracing)
 
 	startAdmin(cfg)
@@ -210,7 +215,7 @@ func newHTTPProxy(cfg *config.Config) http.Handler {
 	authSchemes, err := auth.LoadAuthSchemes(cfg.Proxy.AuthSchemes)
 
 	if err != nil {
-		exit.Fatal("[FATAL]", err)
+		exit.Fatal("[FATAL] ", err)
 	}
 
 	return &proxy.HTTPProxy{
@@ -399,6 +404,8 @@ func initBackend(cfg *config.Config) {
 			registry.Default, err = static.NewBackend(&cfg.Registry.Static)
 		case "consul":
 			registry.Default, err = consul.NewBackend(&cfg.Registry.Consul)
+		case "custom":
+			registry.Default, err = custom.NewBackend(&cfg.Registry.Custom)
 		default:
 			exit.Fatal("[FATAL] Unknown registry backend ", cfg.Registry.Backend)
 		}
@@ -423,45 +430,62 @@ func initBackend(cfg *config.Config) {
 
 func watchBackend(cfg *config.Config, first chan bool) {
 	var (
-		last   string
-		svccfg string
-		mancfg string
-
-		once sync.Once
+		last     string
+		svccfg   string
+		mancfg   string
+		customBE string
+		once     sync.Once
+		next     = new(bytes.Buffer) // fix crash on reset before used (#650)
 	)
 
-	svc := registry.Default.WatchServices()
-	man := registry.Default.WatchManual()
-
-	for {
-		select {
-		case svccfg = <-svc:
-		case mancfg = <-man:
+	switch cfg.Registry.Backend {
+	//Custom Back End.  Gets JSON from Remote Backend that contains a slice of route.RouteDef.  It loads the route table
+	//Directly from that input
+	case "custom":
+		svc := registry.Default.WatchServices()
+		for {
+			customBE = <-svc
+			if customBE != "OK" {
+				log.Printf("[ERROR] error during update from custom back end - %s", customBE)
+			}
+			once.Do(func() { close(first) })
 		}
+	//All other back ends
+	default:
+		svc := registry.Default.WatchServices()
+		man := registry.Default.WatchManual()
 
-		// manual config overrides service config
-		// order matters
-		next := svccfg + "\n" + mancfg
-		if next == last {
-			continue
+		for {
+
+			select {
+			case svccfg = <-svc:
+			case mancfg = <-man:
+			}
+			// manual config overrides service config
+			// order matters
+			next.Reset()
+			next.WriteString(svccfg)
+			next.WriteString("\n")
+			next.WriteString(mancfg)
+			if next.String() == last {
+				continue
+			}
+			aliases, err := route.ParseAliases(next.String())
+			if err != nil {
+				log.Printf("[WARN]: %s", err)
+			}
+			registry.Default.Register(aliases)
+
+			t, err := route.NewTable(next)
+			if err != nil {
+				log.Printf("[WARN] %s", err)
+				continue
+			}
+			route.SetTable(t)
+			logRoutes(t, last, next.String(), cfg.Log.RoutesFormat)
+			last = next.String()
+			once.Do(func() { close(first) })
 		}
-
-		aliases, err := route.ParseAliases(next)
-		if err != nil {
-			log.Printf("[WARN]: %s", err)
-		}
-		registry.Default.Register(aliases)
-
-		t, err := route.NewTable(next)
-		if err != nil {
-			log.Printf("[WARN] %s", err)
-			continue
-		}
-		route.SetTable(t)
-		logRoutes(t, last, next, cfg.Log.RoutesFormat)
-		last = next
-
-		once.Do(func() { close(first) })
 	}
 }
 

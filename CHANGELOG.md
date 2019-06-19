@@ -1,5 +1,37 @@
 ## Changelog
 
+### Unreleased
+
+#### Breaking Changes
+
+* [Issue #657](https://github.com/fabiolb/fabio/issues/657): Fix default registration address
+
+  fabio used to register its UI in Consul with address `:9998`, even if
+  `-ui.addr` was set to a different value. That made it necessary to specify
+  both `-ui.addr` and `-registry.consul.register.addr` in most cases. Now
+  `-registry.consul.register.addr` defaults to the value of `-ui.addr`.
+
+  If you set `-ui.addr` to something other than `:9998` and intentionally
+  omitted the `-registry.consul.register.addr` flag (because the UI is behind a
+  proxy, for instance), you will now have to set `-registry.consul.register.addr=:9998`
+  to get the previous behavior.
+
+  Thanks to [@ttais2017](https://github.com/ttais2017) for the report.
+
+#### Improvements
+
+* [PR #620](https://github.com/fabiolb/fabio/pull/620): Read Vault token from file
+
+  The new `vaultfetchtoken` option for the vault and vault-pki certificate
+  sources can be used to load Vault tokens from environment variables other
+  than `VAULT_TOKEN` and from files on disk. fabio will automatically notice
+  when file contents change and start using new tokens.
+
+  This improves integration with [Nomad](https://www.nomadproject.io/docs/job-specification/vault.html)
+  and the [Vault Agent](https://www.vaultproject.io/docs/agent/).
+
+  Thanks to [@murphymj25](https://github.com/murphymj25) for the patch.
+
 ### [v1.5.11](https://github.com/fabiolb/fabio/releases/tag/v1.5.11) - 25 Feb 2019
 
 #### Breaking Changes
@@ -48,11 +80,11 @@
 
   Thanks to [@stack72](https://github.com/stack72) for the patch.
 
-* [PR #583](https://github.com/fabiolb/fabio/pull/583): Make dest column clickable
+* [PR #583](https://github.com/fabiolb/fabio/pull/583): Update PROXY protocol docs
 
   This patch updates the documentation around the PROXY protocol.
 
-  Thanks to [@pschultz](https://github.com/pschultz).
+  Thanks to [@leprechau](https://github.com/leprechau).
 
 * [PR #587](https://github.com/fabiolb/fabio/pull/587): Make dest column clickable
 

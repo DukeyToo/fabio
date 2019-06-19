@@ -1,6 +1,7 @@
 package route
 
 import (
+	"bytes"
 	"crypto/tls"
 	"fmt"
 	"math"
@@ -380,7 +381,7 @@ func TestTableParse(t *testing.T) {
 		// actual lookup which it probably should.
 		t.Run(tt.desc, func(t *testing.T) {
 			// parse the routes
-			tbl, err := NewTable(strings.Join(tt.in, "\n"))
+			tbl, err := NewTable(bytes.NewBufferString(strings.Join(tt.in, "\n")))
 			if err != nil {
 				t.Fatalf("got %v want nil", err)
 			}
@@ -499,7 +500,7 @@ func TestTableLookupIssue448(t *testing.T) {
 	route add mock / http://foo.com/
 	`
 
-	tbl, err := NewTable(s)
+	tbl, err := NewTable(bytes.NewBufferString(s))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -581,7 +582,7 @@ func TestTableLookup(t *testing.T) {
 	route add svc xyz.com:80/ https://xyz.com
 	`
 
-	tbl, err := NewTable(s)
+	tbl, err := NewTable(bytes.NewBufferString(s))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -637,5 +638,69 @@ func TestTableLookup(t *testing.T) {
 		if got, want := tbl.Lookup(tt.req, "", rndPicker, prefixMatcher, tt.globEnabled).URL.String(), tt.dst; got != want {
 			t.Errorf("%d: got %v want %v", i, got, want)
 		}
+	}
+}
+
+func TestNewTableCustom(t *testing.T) {
+
+	var routes []RouteDef
+	var tags = []string{"tag1", "tag2"}
+	var opts = make(map[string]string)
+	opts["tlsskipverify"] = "true"
+	opts["proto"] = "http"
+
+	var route1 = RouteDef{
+		Cmd:     "route add",
+		Service: "service1",
+		Src:     "app.com",
+		Dst:     "http://10.1.1.1:8080",
+		Weight:  0.50,
+		Tags:    tags,
+		Opts:    opts,
+	}
+	var route2 = RouteDef{
+		Cmd:     "route add",
+		Service: "service1",
+		Src:     "app.com",
+		Dst:     "http://10.1.1.2:8080",
+		Weight:  0.50,
+		Tags:    tags,
+		Opts:    opts,
+	}
+	var route3 = RouteDef{
+		Cmd:     "route add",
+		Service: "service2",
+		Src:     "app.com",
+		Dst:     "http://10.1.1.3:8080",
+		Weight:  0.25,
+		Tags:    tags,
+		Opts:    opts,
+	}
+
+	routes = append(routes, route1)
+	routes = append(routes, route2)
+	routes = append(routes, route3)
+
+	table, err := NewTableCustom(&routes)
+
+	if err != nil {
+		fmt.Printf("Got error from NewTableCustom - %s", err.Error())
+		t.FailNow()
+	}
+
+	tableString := table.String()
+	if !strings.Contains(tableString, route1.Dst) {
+		fmt.Printf("Table Missing Destination %s -- Table -- %s", route1.Dst, tableString)
+		t.FailNow()
+	}
+
+	if !strings.Contains(tableString, route2.Dst) {
+		fmt.Printf("Table Missing Destination %s -- Table -- %s", route1.Dst, tableString)
+		t.FailNow()
+	}
+
+	if !strings.Contains(tableString, route3.Dst) {
+		fmt.Printf("Table Missing Destination %s -- Table -- %s", route1.Dst, tableString)
+		t.FailNow()
 	}
 }
